@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Full Application (Backend + Frontend)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "FastAPI Backend Only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
+                "--reload"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Streamlit Frontend Only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "frontend/app.py",
+                "--server.port",
+                "8501"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
