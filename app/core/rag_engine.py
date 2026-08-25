@@ -168,19 +168,39 @@ class RAGEngine:
                     f"**Retrieved Context Summary:**\nFound {len(context.split('--- [SOURCE')) - 1} relevant chunks for your query."
                 )
 
-        try:
-            response = self.client.chat.completions.create(
-                model=settings.LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=0.1,
-                max_tokens=800
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            return f"❌ Error communicating with LLM ({settings.LLM_PROVIDER}): {str(e)}"
+        # Fallback candidate models for Groq if the configured model is unavailable
+        candidate_models = [settings.LLM_MODEL]
+        if settings.LLM_PROVIDER.lower() == "groq":
+            for fb in ["groq/compound-mini", "groq/compound", "openai/gpt-oss-120b", "llama-3.1-8b-instant", "llama3-8b-8192"]:
+                if fb not in candidate_models:
+                    candidate_models.append(fb)
+
+        last_error = None
+        for model_name in candidate_models:
+            try:
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=0.1,
+                    max_tokens=800
+                )
+                answer_text = response.choices[0].message.content.strip()
+                # Clean up any thought tags from reasoning models
+                answer_text = re.sub(r"<think>.*?</think>", "", answer_text, flags=re.DOTALL).strip()
+                return answer_text
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                # If error is model_not_found, try the next candidate model
+                if "model_not_found" in err_str or "does not exist" in err_str:
+                    continue
+                else:
+                    return f"❌ Error communicating with LLM ({settings.LLM_PROVIDER}): {err_str}"
+
+        return f"❌ Error communicating with LLM ({settings.LLM_PROVIDER}): {str(last_error)}"
 
 
 # Global instance

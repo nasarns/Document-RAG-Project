@@ -72,7 +72,7 @@ Open `.env` in the project root and set your preferred LLM provider:
    ```env
    LLM_PROVIDER=groq
    GROQ_API_KEY=gsk_your_groq_api_key_here
-   LLM_MODEL=llama-3.3-70b-versatile
+   LLM_MODEL=groq/compound-mini
    ```
 
 #### Option B: OpenAI

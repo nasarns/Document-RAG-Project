@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = Field(default="", description="Groq API key")
     OPENAI_API_KEY: str = Field(default="", description="OpenAI API key")
     GEMINI_API_KEY: str = Field(default="", description="Google Gemini API key")
-    LLM_MODEL: str = Field(default="llama-3.3-70b-versatile", description="Model name")
+    LLM_MODEL: str = Field(default="groq/compound-mini", description="Model name")
     LLM_BASE_URL: str = Field(default="", description="Optional custom base URL (e.g. for Ollama)")
 
     # Vector DB & Embeddings
