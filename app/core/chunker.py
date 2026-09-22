@@ -46,8 +46,12 @@ class TextChunker:
             if not raw_text:
                 continue
 
-            # If block text is small enough, keep as single chunk
-            if len(raw_text) <= self.chunk_size:
+            # Table rows are deliberately extracted as self-contained blocks.
+            # Do not split them unless they are genuinely larger than the
+            # configured chunk size; preserving the row is more important than
+            # producing perfectly uniform chunk lengths.
+            is_table_row = base_meta.get("row_index") is not None
+            if len(raw_text) <= self.chunk_size or is_table_row:
                 text_splits = [raw_text]
             else:
                 text_splits = self._split_text(raw_text)

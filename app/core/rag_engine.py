@@ -72,11 +72,18 @@ class RAGEngine:
         retrieved_chunks = self.vector_db.search(
             query_vector=query_vector,
             top_k=k,
-            doc_id_filter=doc_id_filter
+            doc_id_filter=doc_id_filter,
+            query_text=question
         )
 
-        # 3. Guardrail: No chunks found or low similarity
-        if not retrieved_chunks or (retrieved_chunks and retrieved_chunks[0]["score"] < threshold):
+        # Use the hybrid score for the evidence gate. It combines semantic
+        # similarity with exact-term overlap, which is important for questions
+        # about project names and technology stacks.
+        best_score = (
+            retrieved_chunks[0].get("hybrid_score", retrieved_chunks[0]["score"])
+            if retrieved_chunks else 0.0
+        )
+        if not retrieved_chunks or best_score < threshold:
             return {
                 "question": question,
                 "answer": "Insufficient Evidence. The uploaded document(s) do not contain information related to this question.",
@@ -136,7 +143,7 @@ class RAGEngine:
         for i, chunk in enumerate(chunks, 1):
             label = chunk.get("citation_label", f"Chunk {i}")
             text = chunk.get("text", "").strip()
-            score = round(chunk.get("score", 0.0), 2)
+            score = round(chunk.get("hybrid_score", chunk.get("score", 0.0)), 2)
             formatted_blocks.append(f"--- [SOURCE {i}: {label} | Relevance: {score}] ---\n{text}\n")
 
         return "\n".join(formatted_blocks)

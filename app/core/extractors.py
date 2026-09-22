@@ -127,22 +127,41 @@ class DocumentExtractor:
                     }
                 })
 
-            # Also extract tables from docx
+            # Extract DOCX tables row-by-row. Keeping each row together is
+            # important for RAG: project name, student and software columns
+            # must remain in the same retrieval unit instead of being split by
+            # the generic character chunker. Include the header in every row
+            # so each row remains self-describing.
             for t_idx, table in enumerate(doc.tables):
-                table_rows = []
+                rows = []
                 for row in table.rows:
                     row_data = [cell.text.strip() for cell in row.cells]
                     if any(row_data):
-                        table_rows.append(" | ".join(row_data))
-                if table_rows:
+                        rows.append(row_data)
+
+                if not rows:
+                    continue
+
+                header = rows[0]
+                header_text = " | ".join(header)
+
+                for row_idx, row_data in enumerate(rows[1:], start=2):
+                    row_text = " | ".join(row_data)
+                    if not row_text.strip():
+                        continue
+
+                    # Keep the table header with each data row. If a row is
+                    # unusually long, the normal chunker can still split it.
                     blocks.append({
-                        "text": "\n".join(table_rows),
+                        "text": f"{header_text}\n{row_text}",
                         "metadata": {
                             "filename": filename,
                             "file_type": "docx",
                             "page_number": None,
                             "sheet_name": None,
-                            "section": f"Table {t_idx + 1}"
+                            "section": f"Table {t_idx + 1}, Row {row_idx}",
+                            "table_index": t_idx + 1,
+                            "row_index": row_idx
                         }
                     })
         except Exception as e:

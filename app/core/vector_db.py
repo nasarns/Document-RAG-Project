@@ -1,5 +1,6 @@
 import os
 from typing import List, Dict, Any, Optional
+import re
 from datetime import datetime
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -65,15 +66,30 @@ class VectorDBManager:
         )
         return len(points)
 
+    @staticmethod
+    def _lexical_relevance(query: str, text: str) -> float:
+        """Score overlap of meaningful query terms with a candidate chunk."""
+        query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
+        text_terms = set(re.findall(r"[a-z0-9]+", text.lower()))
+        stopwords = {
+            "what", "which", "who", "where", "when", "why", "how",
+            "does", "do", "did", "is", "are", "was", "were", "the",
+            "a", "an", "and", "or", "of", "to", "for", "in", "on",
+            "uses", "use", "using", "used", "project", "tell", "me"
+        }
+        query_terms -= stopwords
+        if not query_terms:
+            return 0.0
+        return len(query_terms & text_terms) / len(query_terms)
+
     def search(
         self,
         query_vector: List[float],
         top_k: int = 4,
-        doc_id_filter: Optional[str] = None
+        doc_id_filter: Optional[str] = None,
+        query_text: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Searches Qdrant for top-K most similar chunks to query vector.
-        """
+        """Search Qdrant and optionally rerank candidates with lexical overlap."""
         query_filter = None
         if doc_id_filter:
             query_filter = Filter(
@@ -85,33 +101,42 @@ class VectorDBManager:
                 ]
             )
 
-        # Compatibility with qdrant_client query_points / search
+        # Retrieve a wider candidate pool so exact table rows are not lost
+        # merely because their dense score is a little lower than unrelated text.
+        candidate_k = max(top_k * 4, 12)
         try:
             results = self.client.query_points(
                 collection_name=self.collection_name,
                 query=query_vector,
                 query_filter=query_filter,
-                limit=top_k,
+                limit=candidate_k,
                 with_payload=True
             ).points
         except Exception:
-            # Fallback to search method if query_points not available
             results = self.client.search(
                 collection_name=self.collection_name,
                 query_vector=query_vector,
                 query_filter=query_filter,
-                limit=top_k,
+                limit=candidate_k,
                 with_payload=True
             )
 
         matched_chunks = []
         for hit in results:
             payload = hit.payload or {}
+            semantic_score = float(hit.score)
+            lexical_score = (
+                self._lexical_relevance(query_text, payload.get("text", ""))
+                if query_text else 0.0
+            )
+            hybrid_score = (0.70 * semantic_score) + (0.30 * lexical_score)
             matched_chunks.append({
                 "chunk_id": payload.get("chunk_id", str(hit.id)),
                 "doc_id": payload.get("doc_id"),
                 "text": payload.get("text", ""),
-                "score": float(hit.score),
+                "score": semantic_score,
+                "lexical_score": round(lexical_score, 4),
+                "hybrid_score": round(hybrid_score, 4),
                 "filename": payload.get("filename"),
                 "page_number": payload.get("page_number"),
                 "sheet_name": payload.get("sheet_name"),
@@ -120,7 +145,9 @@ class VectorDBManager:
                 "indexed_at": payload.get("indexed_at")
             })
 
-        return matched_chunks
+        if query_text:
+            matched_chunks.sort(key=lambda item: item["hybrid_score"], reverse=True)
+        return matched_chunks[:top_k]
 
     def list_documents(self) -> List[Dict[str, Any]]:
         """
